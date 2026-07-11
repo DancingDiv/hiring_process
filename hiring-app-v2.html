@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#1a1f28; --fg:#f2f4f7; --muted:#9aa3af; --accent:#6ee7b7; --danger:#e2574a;
+    --font-display:'Space Grotesk', sans-serif; --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--fg); font-family:var(--font-display);
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:28px 16px;
+    position:relative; overflow-x:hidden; transition:background .6s ease, color .6s ease;
+  }
+  #bg-canvas{position:fixed; inset:0; z-index:0;}
+  #app{position:relative; z-index:1; width:100%; max-width:600px;}
+
+  .stage{display:none; flex-direction:column; gap:16px;}
+  .stage.active{display:flex; animation:fadein .4s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  .card{background:var(--panel); border:2px solid var(--accent); border-radius:var(--radius);
+    padding:26px; display:flex; flex-direction:column; gap:16px; transition:background .5s ease, border-color .5s ease, border-radius .5s ease;}
+  body[data-era="modern"] .card{border-color:rgba(255,255,255,.1); border-width:1px;}
+
+  h1{font-size:22px; margin:0; font-weight:700;}
+  h2{font-size:14px; margin:0; color:var(--accent); font-weight:500; letter-spacing:.3px;}
+  p{margin:0; font-size:15px; line-height:1.6; opacity:.88;}
+  .muted{color:var(--muted); font-size:13px;}
+
+  button{
+    font-family:var(--font-display); font-weight:500; font-size:14px; cursor:pointer;
+    background:var(--accent); color:#06281c; border:none; border-radius:var(--radius);
+    padding:13px 20px; transition:filter .15s ease, transform .15s ease;
+  }
+  button:hover{filter:brightness(1.1);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button.ghost{background:transparent; border:1px solid var(--accent); color:var(--accent);}
+  body[data-era="8bit"] button, body[data-era="16bit"] button, body[data-era="ps1"] button{
+    font-family:'Press Start 2P', monospace; font-size:10px; border-radius:0; box-shadow:3px 3px 0 rgba(0,0,0,.35);
+  }
+  body[data-era="8bit"] button:active, body[data-era="16bit"] button:active, body[data-era="ps1"] button:active{
+    box-shadow:1px 1px 0 rgba(0,0,0,.35); transform:translate(2px,2px);
+  }
+  .skip-link{background:none; border:none; color:var(--muted); text-decoration:underline; cursor:pointer; font-size:13px; padding:4px; align-self:flex-start;}
+
+  .pixel-title{font-family:'Press Start 2P', monospace; font-size:22px; letter-spacing:1px; color:var(--accent); text-align:center;}
+
+  .cards{display:grid; gap:12px;}
+  .role-card{background:var(--panel); border:2px solid var(--accent); border-radius:var(--radius); padding:16px;
+    cursor:pointer; display:flex; flex-direction:column; gap:4px; transition:transform .15s ease;}
+  .role-card:hover{transform:translateY(-2px);}
+  .role-card h3{margin:0; font-size:15px;}
+
+  .progress-dots{display:flex; gap:6px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.15);}
+  .dot.done{background:var(--accent);}
+  .dot.current{background:var(--fg);}
+
+  textarea, input[type=text], input[type=email]{
+    width:100%; background:#11161d; border:1px solid rgba(255,255,255,.14); color:var(--fg);
+    padding:12px; border-radius:8px; font-family:var(--font-display); font-size:14px; resize:vertical;
+  }
+  textarea{min-height:100px;}
+  label.field-label{font-size:13px; color:var(--muted); display:block; margin-bottom:6px;}
+
+  .file-drop{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .hidden-file-input{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;}
+  .file-btn{background:var(--accent); color:#06281c; padding:9px 14px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;}
+  .file-name{font-size:13px; color:var(--muted); word-break:break-all;}
+  .file-status{font-size:12px;}
+  .file-status.ok{color:var(--accent);}
+  .file-status.err{color:var(--danger);}
+
+  .asset-box{background:#11161d; border-radius:10px; padding:12px; display:flex; flex-direction:column; align-items:center; gap:8px;}
+  canvas{border-radius:8px; background:#000; max-width:100%;}
+  pre{background:#0b0e13; padding:14px; border-radius:8px; overflow-x:auto; font-size:12.5px; line-height:1.5; color:#cde; margin:0;}
+
+  .row{display:flex; gap:12px; flex-wrap:wrap;}
+  .row > *{flex:1; min-width:150px;}
+
+  #wipe{position:fixed; inset:0; background:#000; pointer-events:none; opacity:0; z-index:50;}
+  #wipe.show{animation:wipe .55s ease forwards;}
+  @keyframes wipe{0%{opacity:0;}50%{opacity:.92;}100%{opacity:0;}}
+
+  /* ---- era palettes ---- */
+  body[data-era="8bit"]{--bg:#0f380f; --panel:#183a18; --fg:#9bbc0f; --accent:#8bac0f;}
+  body[data-era="16bit"]{--bg:#1c1030; --panel:#2c1c4a; --fg:#e9dfff; --accent:#c9a6ff;}
+  body[data-era="ps1"]{--bg:#0f1f33; --panel:#16324f; --fg:#cfe6ff; --accent:#3ec6ff;}
+  body[data-era="indie"]{--bg:#2a1420; --panel:#40203a; --fg:#ffe3ef; --accent:#ff6f9c;}
+  body[data-era="modern"]{--bg:#0e1116; --panel:#1a1f28; --fg:#f2f4f7; --accent:#6ee7b7;}
+</style>
+</head>
+<body data-era="8bit">
+<canvas id="bg-canvas"></canvas>
+<div id="wipe"></div>
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/* =========================================================================
+   CONFIG
+   ========================================================================= */
+const RECIPIENT_EMAIL = 'adelghpour@gmail.com';
+
+const LIMITS = {
+  audio: { maxBytes: 10*1024*1024, ext:['wav'], magic:[0x52,0x49,0x46,0x46] }, // "RIFF"
+  image: { maxBytes: 5*1024*1024,  ext:['png'], magic:[0x89,0x50,0x4E,0x47] }, // PNG signature
+  code:  { maxBytes: 300*1024,     ext:['cs','txt'], magic:null },
+  doc:   { maxBytes: 8*1024*1024,  ext:['pdf','doc','docx'], magic:null }
+};
+
+/* =========================================================================
+   ROLE DATA
+   ========================================================================= */
+const ROLES = {
+  sound: {
+    name: 'Sound Designer',
+    questions: [
+      { level:'easy', text:"Pick a game sound (any game) doing more work than players realize. What is it actually communicating?" },
+      { level:'mid', text:"You're building footstep sounds for grass, wood, and metal but only have budget for 6 audio files total. How do you decide what to record vs. reuse, and what gets sacrificed?" },
+      { level:'hard', text:"A player says the game feels quiet even though plenty of SFX exist. Walk through how you'd diagnose this - not fix it, just find the actual cause." }
+    ],
+    challenges: [
+      { id:'foley', title:'Foley match', kind:'foley', desc:'Two silent gameplay clips below. Create and upload a WAV for each. Optional - skip if you want.' },
+      { id:'cleanup', title:'Clean-up', kind:'cleanup', desc:'Download the noisy sample, then upload your cleaned version. Optional - skip if you want.' }
+    ]
+  },
+  twod: {
+    name: '2D Designer',
+    questions: [
+      { level:'easy', text:"Compare two icons for the same object across different games - which communicates function faster, and why?" },
+      { level:'mid', text:"One asset has to read clearly at 32px (mobile) and 512px (marketing). What changes between the two versions, and what do you refuse to change?" },
+      { level:'hard', text:"Your art director wants more personality in enemy designs but can't define what that means. How do you get from that vague note to something executable?" }
+    ],
+    challenges: [
+      { id:'iconset', title:'Icon set match', kind:'iconset', desc:'Match the style reference below with a small icon/sprite set (PNG). Optional - skip if you want.' },
+      { id:'palette', title:'Palette swap', kind:'palette', desc:'Download the sample asset, adapt it to a different theme (e.g. day to night), upload PNG. Optional - skip if you want.' }
+    ]
+  },
+  backend: {
+    name: 'C# Backend Developer',
+    questions: [
+      { level:'easy', text:"Describe a bug you've personally hit that was hard to reproduce. What made it hard?" },
+      { level:'mid', text:"You need to let two players trade inventory items live, with zero downtime allowed. Walk through your approach and what could go wrong." },
+      { level:'hard', text:"Leaderboard write throughput needs to 10x overnight before a marketing push, and the database can't change. What levers do you actually have, which do you pull first, and how could each one fail?" }
+    ],
+    challenges: [
+      { id:'apidesign', title:'API design', kind:'text', desc:'Players need to trade items. Design just the endpoint / method signatures below. Optional - skip if you want.' },
+      { id:'concurrency', title:'Concurrency fix', kind:'concurrency', desc:'The snippet below loses writes under load. Upload your fixed .cs file. Optional - skip if you want.' }
+    ]
+  }
+};
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const state = { role:null, qIndex:0, answers:[], cIndex:0, challengeFiles:{}, info:{} };
+
+/* =========================================================================
+   ANIMATED BACKGROUND (matches current era's palette)
+   ========================================================================= */
+const bgCanvas = document.getElementById('bg-canvas');
+const bgCtx = bgCanvas.getContext('2d');
+function resizeBg(){ bgCanvas.width = innerWidth; bgCanvas.height = innerHeight; }
+addEventListener('resize', resizeBg); resizeBg();
+
+const PALETTES = {
+  '8bit':   ['#9bbc0f','#8bac0f','#306230'],
+  '16bit':  ['#c9a6ff','#7a52d6','#4a2f86'],
+  'ps1':    ['#3ec6ff','#4fd1c5','#1d5a8a'],
+  'indie':  ['#ff6f9c','#ffd166','#c94f77'],
+  'modern': ['#6ee7b7','#3ec6ff','#3a4453']
+};
+let currentPalette = PALETTES['8bit'];
+function setEra(era){ document.body.dataset.era = era; currentPalette = PALETTES[era] || PALETTES.modern; }
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const motes = Array.from({length:42}, () => ({
+  x: Math.random()*innerWidth, y: Math.random()*innerHeight,
+  s: 4+Math.random()*6, vy: 0.12+Math.random()*0.3, vx:(Math.random()-0.5)*0.15, c: Math.floor(Math.random()*3)
+}));
+function animateBg(){
+  bgCtx.clearRect(0,0,bgCanvas.width,bgCanvas.height);
+  motes.forEach(m=>{
+    bgCtx.globalAlpha = 0.3;
+    bgCtx.fillStyle = currentPalette[m.c];
+    bgCtx.fillRect(m.x, m.y, m.s, m.s);
+    if (!reduceMotion){
+      m.y -= m.vy; m.x += m.vx;
+      if (m.y < -10){ m.y = bgCanvas.height+10; m.x = Math.random()*bgCanvas.width; }
+      if (m.x < -10) m.x = bgCanvas.width+10;
+      if (m.x > bgCanvas.width+10) m.x = -10;
+    }
+  });
+  bgCtx.globalAlpha = 1;
+  requestAnimationFrame(animateBg);
+}
+animateBg();
+
+/* =========================================================================
+   FILE HELPERS
+   ========================================================================= */
+function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
+async function readMagic(file,n){ return new Uint8Array(await file.slice(0,n).arrayBuffer()); }
+async function validateFile(file, kind){
+  const rule = LIMITS[kind];
+  if (file.size > rule.maxBytes) return { ok:false, msg:`Too large - max ${(rule.maxBytes/1024/1024).toFixed(1)}MB.` };
+  if (!rule.ext.includes(extOf(file.name))) return { ok:false, msg:`Wrong file type - expected .${rule.ext.join(' / .')}` };
+  if (rule.magic){
+    const head = await readMagic(file, rule.magic.length);
+    if (!rule.magic.every((b,i)=>head[i]===b)) return { ok:false, msg:"File contents don't match that format." };
+  }
+  return { ok:true, msg:'Looks good.' };
+}
+function fileInputHTML(id, accept){
+  return `<div class="file-drop">
+      <label class="file-btn" for="${id}">Choose file</label>
+      <input type="file" id="${id}" accept="${accept}" class="hidden-file-input">
+      <span class="file-name" id="${id}-name">No file chosen</span>
+    </div>
+    <div class="file-status" id="${id}-status"></div>`;
+}
+function wireFileInput(id, kind, onValid, onClear){
+  const input = document.getElementById(id);
+  const nameEl = document.getElementById(id+'-name');
+  const statusEl = document.getElementById(id+'-status');
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    nameEl.textContent = file.name;
+    statusEl.textContent = 'Checking file...'; statusEl.className = 'file-status';
+    const res = await validateFile(file, kind);
+    statusEl.textContent = res.msg; statusEl.className = 'file-status ' + (res.ok?'ok':'err');
+    if (res.ok) onValid(file);
+    else { input.value=''; nameEl.textContent='No file chosen'; if (onClear) onClear(); }
+  });
+}
+function triggerDownload(blob, filename){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function downloadCanvasPng(canvas, filename){ canvas.toBlob(b => triggerDownload(b, filename)); }
+
+/* =========================================================================
+   GENERATED CHALLENGE ASSETS (no external files needed)
+   ========================================================================= */
+function drawShootClip(canvas){
+  const ctx = canvas.getContext('2d'); let x=10, burst=0;
+  (function frame(){
+    ctx.clearRect(0,0,160,90); ctx.fillStyle='#6ee7b7'; ctx.fillRect(x,40,14,10);
+    if (x>120 && burst<10){ ctx.beginPath(); ctx.arc(140,45,4+burst,0,Math.PI*2);
+      ctx.strokeStyle='rgba(230,200,80,'+(1-burst/10)+')'; ctx.stroke(); burst++; }
+    x=(x+3)%150; if (x<10) burst=0;
+    requestAnimationFrame(frame);
+  })();
+}
+function drawJumpClip(canvas){
+  const ctx = canvas.getContext('2d'); let t=0;
+  (function frame(){
+    ctx.clearRect(0,0,160,90);
+    const y = 60 - Math.abs(Math.sin(t))*35;
+    ctx.beginPath(); ctx.arc(80,y,10,0,Math.PI*2); ctx.fillStyle='#6ee7b7'; ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.15)'; ctx.beginPath(); ctx.ellipse(80,72,12,3,0,0,Math.PI*2); ctx.fill();
+    t+=0.06; requestAnimationFrame(frame);
+  })();
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawIconReferenceSheet(canvas){
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle='#11161d'; ctx.fillRect(0,0,240,90);
+  const colors = ['#6ee7b7','#3ec6ff','#ff6f9c','#ffd166'];
+  colors.forEach((c,i)=>{
+    const x = 15+i*55;
+    ctx.fillStyle=c; roundRect(ctx,x,20,40,40,8); ctx.fill();
+    ctx.fillStyle='#0b0e13'; ctx.beginPath(); ctx.arc(x+20,40,8,0,Math.PI*2); ctx.fill();
+  });
+}
+function drawDayScene(canvas){
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle='#bfe7ff'; ctx.fillRect(0,0,240,90);
+  ctx.fillStyle='#ffd166'; ctx.beginPath(); ctx.arc(200,25,16,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  [[40,30],[70,20],[100,35]].forEach(([x,y])=>{ ctx.beginPath(); ctx.ellipse(x,y,18,10,0,0,Math.PI*2); ctx.fill(); });
+  ctx.fillStyle='#6ee7b7'; ctx.fillRect(0,65,240,25);
+}
+function generateNoisyWavBlob(){
+  const sr=22050, len=sr*2, data=new Float32Array(len);
+  for (let i=0;i<len;i++) data[i] = Math.sin(2*Math.PI*440*i/sr)*0.4 + (Math.random()*2-1)*0.5;
+  return floatToWavBlob(data, sr);
+}
+function floatToWavBlob(samples, sampleRate){
+  const buffer = new ArrayBuffer(44+samples.length*2), view = new DataView(buffer);
+  const writeStr=(o,s)=>{ for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4,36+samples.length*2,true); writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,1,true); view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true); writeStr(36,'data'); view.setUint32(40,samples.length*2,true);
+  let off=44;
+  for (let i=0;i<samples.length;i++,off+=2){ const s=Math.max(-1,Math.min(1,samples[i])); view.setInt16(off, s<0?s*0x8000:s*0x7FFF, true); }
+  return new Blob([view], { type:'audio/wav' });
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+const app = document.getElementById('app');
+const ERA_FOR = { intro:'8bit', role:'16bit', question:'ps1', challenge:'indie', info:'modern', done:'modern' };
+
+function wipeTo(stageKey, renderFn){
+  const wipe = document.getElementById('wipe');
+  wipe.classList.remove('show'); void wipe.offsetWidth; wipe.classList.add('show');
+  setTimeout(() => { setEra(ERA_FOR[stageKey]); renderFn(); }, 250);
+}
+
+function renderIntro(){
+  app.innerHTML = `
+    <div class="stage active" style="align-items:center; text-align:center;">
+      <div class="pixel-title">THE BUILD</div>
+      <p>A live playtest, not a form.<br>A few quick questions, then two small challenges - nothing here is mandatory except your info at the very end.</p>
+      <button id="start">PRESS START</button>
+    </div>`;
+  document.getElementById('start').onclick = () => wipeTo('role', renderRoleSelect);
+}
+
+function renderRoleSelect(){
+  const cards = Object.entries(ROLES).map(([key,r]) => `
+    <div class="role-card" data-role="${key}"><h3>${r.name}</h3><p class="muted">3 questions + 2 optional challenges</p></div>`).join('');
+  app.innerHTML = `<div class="card stage active"><h1>Choose your role</h1><p class="muted">This decides which questions and challenges you'll get.</p><div class="cards">${cards}</div></div>`;
+  app.querySelectorAll('.role-card').forEach(el => el.onclick = () => {
+    state.role = el.dataset.role; state.qIndex = 0; state.answers = [];
+    wipeTo('question', renderQuestion);
+  });
+}
+
+function renderQuestion(){
+  const role = ROLES[state.role];
+  const q = role.questions[state.qIndex];
+  const dots = role.questions.map((_,i)=>`<div class="dot ${i<state.qIndex?'done':i===state.qIndex?'current':''}"></div>`).join('');
+  app.innerHTML = `
+    <div class="card stage active">
+      <div class="progress-dots">${dots}</div>
+      <h2>QUESTION ${state.qIndex+1} OF 3 - ${q.level.toUpperCase()}</h2>
+      <h1 style="font-size:17px;">${q.text}</h1>
+      <textarea id="answer" placeholder="Type your answer, or leave blank and skip...">${state.answers[state.qIndex]||''}</textarea>
+      <p class="muted">Optional - you can leave this empty.</p>
+      <div class="row">
+        <button class="ghost" id="back" ${state.qIndex===0?'disabled':''}>Back</button>
+        <button id="next"></button>
+      </div>
+    </div>`;
+  const answerEl = document.getElementById('answer');
+  const nextBtn = document.getElementById('next');
+  const label = () => nextBtn.textContent = answerEl.value.trim() ? (state.qIndex<2?'Next':'Continue') : (state.qIndex<2?'Skip':'Skip & continue');
+  label(); answerEl.addEventListener('input', label);
+  document.getElementById('back').onclick = () => { state.qIndex--; wipeTo('question', renderQuestion); };
+  nextBtn.onclick = () => {
+    state.answers[state.qIndex] = answerEl.value;
+    if (state.qIndex < 2) { state.qIndex++; wipeTo('question', renderQuestion); }
+    else { state.cIndex = 0; wipeTo('challenge', renderChallenge); }
+  };
+}
+
+function challengeHasData(c){
+  if (c.kind === 'foley') return !!(state.challengeFiles[c.id+'_1'] && state.challengeFiles[c.id+'_2']);
+  if (c.kind === 'text') return !!(state.challengeFiles[c.id]?.text?.trim());
+  return !!state.challengeFiles[c.id];
+}
+
+function renderChallenge(){
+  const role = ROLES[state.role];
+  const c = role.challenges[state.cIndex];
+  const dots = role.challenges.map((_,i)=>`<div class="dot ${i<state.cIndex?'done':i===state.cIndex?'current':''}"></div>`).join('');
+
+  let bodyHtml = '';
+  if (c.kind === 'foley') {
+    bodyHtml = `
+      <div class="row">
+        <div class="asset-box"><canvas id="clip1" width="160" height="90"></canvas><span class="muted">clip: shoot</span>
+          <button class="ghost" id="dlClip1">Download reference (PNG)</button></div>
+        <div class="asset-box"><canvas id="clip2" width="160" height="90"></canvas><span class="muted">clip: jump</span>
+          <button class="ghost" id="dlClip2">Download reference (PNG)</button></div>
+      </div>
+      <label class="field-label">Upload WAV for "shoot"</label>${fileInputHTML(c.id+'_1', '.wav')}
+      <label class="field-label">Upload WAV for "jump"</label>${fileInputHTML(c.id+'_2', '.wav')}`;
+  } else if (c.kind === 'cleanup') {
+    bodyHtml = `
+      <button class="ghost" id="dlNoisy">Download noisy sample (WAV)</button>
+      <label class="field-label">Upload your cleaned version</label>${fileInputHTML(c.id, '.wav')}`;
+  } else if (c.kind === 'iconset') {
+    bodyHtml = `
+      <div class="asset-box"><canvas id="ref" width="240" height="90"></canvas><span class="muted">style reference</span>
+        <button class="ghost" id="dlRef">Download reference (PNG)</button></div>
+      <label class="field-label">Upload your icon/sprite set (PNG)</label>${fileInputHTML(c.id, '.png')}`;
+  } else if (c.kind === 'palette') {
+    bodyHtml = `
+      <div class="asset-box"><canvas id="sample" width="240" height="90"></canvas><span class="muted">sample asset (day)</span>
+        <button class="ghost" id="dlSample">Download sample asset (PNG)</button></div>
+      <label class="field-label">Upload your reworked version (PNG)</label>${fileInputHTML(c.id, '.png')}`;
+  } else if (c.kind === 'text') {
+    bodyHtml = `<textarea id="textAnswer" placeholder="Describe endpoints / method signatures, or leave blank and skip...">${state.challengeFiles[c.id]?.text||''}</textarea>`;
+  } else if (c.kind === 'concurrency') {
+    bodyHtml = `
+      <pre>public void UpdateScore(int playerId, int points) {
+    var score = leaderboard[playerId];
+    score += points;
+    leaderboard[playerId] = score; // lost writes under concurrent calls
+}</pre>
+      <label class="field-label">Upload your fixed .cs file</label>${fileInputHTML(c.id, '.cs,.txt')}`;
+  }
+
+  app.innerHTML = `
+    <div class="card stage active">
+      <div class="progress-dots">${dots}</div>
+      <h2>CHALLENGE ${state.cIndex+1} OF 2 - ${c.title.toUpperCase()}</h2>
+      <p>${c.desc}</p>
+      ${bodyHtml}
+      <div class="row">
+        <button class="ghost" id="back" ${state.cIndex===0?'disabled':''}>Back</button>
+        <button id="next"></button>
+      </div>
+    </div>`;
+
+  const nextBtn = document.getElementById('next');
+  const relabel = () => nextBtn.textContent = challengeHasData(c) ? (state.cIndex<1?'Next':'Continue') : (state.cIndex<1?'Skip':'Skip & continue');
+  relabel();
+
+  if (c.kind === 'foley') {
+    drawShootClip(document.getElementById('clip1')); drawJumpClip(document.getElementById('clip2'));
+    document.getElementById('dlClip1').onclick = () => downloadCanvasPng(document.getElementById('clip1'), 'reference-shoot.png');
+    document.getElementById('dlClip2').onclick = () => downloadCanvasPng(document.getElementById('clip2'), 'reference-jump.png');
+    wireFileInput(c.id+'_1','audio', f=>{ state.challengeFiles[c.id+'_1']=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id+'_1']; relabel(); });
+    wireFileInput(c.id+'_2','audio', f=>{ state.challengeFiles[c.id+'_2']=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id+'_2']; relabel(); });
+  } else if (c.kind === 'cleanup') {
+    document.getElementById('dlNoisy').onclick = () => triggerDownload(generateNoisyWavBlob(), 'noisy-sample.wav');
+    wireFileInput(c.id,'audio', f=>{ state.challengeFiles[c.id]=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id]; relabel(); });
+  } else if (c.kind === 'iconset') {
+    drawIconReferenceSheet(document.getElementById('ref'));
+    document.getElementById('dlRef').onclick = () => downloadCanvasPng(document.getElementById('ref'), 'style-reference.png');
+    wireFileInput(c.id,'image', f=>{ state.challengeFiles[c.id]=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id]; relabel(); });
+  } else if (c.kind === 'palette') {
+    drawDayScene(document.getElementById('sample'));
+    document.getElementById('dlSample').onclick = () => downloadCanvasPng(document.getElementById('sample'), 'sample-day.png');
+    wireFileInput(c.id,'image', f=>{ state.challengeFiles[c.id]=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id]; relabel(); });
+  } else if (c.kind === 'text') {
+    const ta = document.getElementById('textAnswer');
+    ta.addEventListener('input', () => { state.challengeFiles[c.id] = { text: ta.value }; relabel(); });
+  } else if (c.kind === 'concurrency') {
+    wireFileInput(c.id,'code', f=>{ state.challengeFiles[c.id]=f; relabel(); }, ()=>{ delete state.challengeFiles[c.id]; relabel(); });
+  }
+
+  document.getElementById('back').onclick = () => {
+    if (state.cIndex === 0) { state.qIndex = 2; wipeTo('question', renderQuestion); }
+    else { state.cIndex--; wipeTo('challenge', renderChallenge); }
+  };
+  nextBtn.onclick = () => {
+    if (state.cIndex < 1) { state.cIndex++; wipeTo('challenge', renderChallenge); }
+    else wipeTo('info', renderInfo);
+  };
+}
+
+function renderInfo(){
+  app.innerHTML = `
+    <div class="card stage active">
+      <h1>Almost there</h1>
+      <p class="muted">Name and email are required. Everything else here is optional.</p>
+      <div><label class="field-label">Name *</label><input type="text" id="name"></div>
+      <div><label class="field-label">Email *</label><input type="email" id="email"></div>
+      <div><label class="field-label">Portfolio / reel link (optional)</label><input type="text" id="link1"></div>
+      <div><label class="field-label">Other link (optional)</label><input type="text" id="link2"></div>
+      <div><label class="field-label">CV - PDF/DOC/DOCX, optional</label>${fileInputHTML('cv','.pdf,.doc,.docx')}</div>
+      <div class="row">
+        <button class="ghost" id="back">Back</button>
+        <button id="submit" disabled>Save & send</button>
+      </div>
+      <p class="muted" id="submitStatus"></p>
+    </div>`;
+
+  const submitBtn = document.getElementById('submit');
+  const checkReady = () => {
+    submitBtn.disabled = !(document.getElementById('name').value.trim() && document.getElementById('email').value.trim());
+  };
+  document.getElementById('name').addEventListener('input', checkReady);
+  document.getElementById('email').addEventListener('input', checkReady);
+  wireFileInput('cv','doc', f => { state.info.cv = f; }, () => { delete state.info.cv; });
+
+  document.getElementById('back').onclick = () => { state.cIndex = 1; wipeTo('challenge', renderChallenge); };
+  submitBtn.onclick = async () => {
+    submitBtn.disabled = true;
+    state.info.name = document.getElementById('name').value.trim();
+    state.info.email = document.getElementById('email').value.trim();
+    state.info.link1 = document.getElementById('link1').value.trim();
+    state.info.link2 = document.getElementById('link2').value.trim();
+    document.getElementById('submitStatus').textContent = 'Packing your submission...';
+    await finalizeSubmission();
+  };
+}
+
+/* =========================================================================
+   SUBMIT - zips everything for download, then opens the candidate's own
+   email app pre-filled and addressed to the recipient. Browsers can't
+   auto-attach files to a mailto link (security restriction), so the flow
+   downloads a zip first and asks the candidate to attach it before sending.
+   ========================================================================= */
+async function finalizeSubmission(){
+  const role = ROLES[state.role];
+  const lines = [];
+  lines.push('Candidate: ' + state.info.name);
+  lines.push('Email: ' + state.info.email);
+  lines.push('Role: ' + role.name);
+  if (state.info.link1) lines.push('Link 1: ' + state.info.link1);
+  if (state.info.link2) lines.push('Link 2: ' + state.info.link2);
+  lines.push(''); lines.push('--- Questions ---');
+  role.questions.forEach((q,i) => {
+    lines.push('[' + q.level.toUpperCase() + '] ' + q.text);
+    lines.push(state.answers[i] ? state.answers[i] : '(skipped)');
+    lines.push('');
+  });
+  lines.push('--- Challenges ---');
+  role.challenges.forEach(c => {
+    lines.push(c.title + ':');
+    if (c.kind === 'text') lines.push(state.challengeFiles[c.id]?.text || '(skipped)');
+    else {
+      const keys = Object.keys(state.challengeFiles).filter(k => k===c.id || k.startsWith(c.id+'_'));
+      if (keys.length) keys.forEach(k => lines.push('file: ' + state.challengeFiles[k].name));
+      else lines.push('(skipped)');
+    }
+    lines.push('');
+  });
+  const summary = lines.join('\n');
+
+  const zip = new JSZip();
+  zip.file('answers.txt', summary);
+  for (const val of Object.values(state.challengeFiles)) if (val instanceof File) zip.file(val.name, val);
+  if (state.info.cv) zip.file(state.info.cv.name, state.info.cv);
+
+  const zipName = (state.info.name || 'candidate').replace(/[^a-z0-9]+/gi,'-') + '-submission.zip';
+  const blob = await zip.generateAsync({ type:'blob' });
+  triggerDownload(blob, zipName);
+
+  const subject = encodeURIComponent('Hiring submission - ' + role.name + ' - ' + state.info.name);
+  const body = encodeURIComponent(
+    'Hi,\n\nMy submission for ' + role.name + ' just downloaded as "' + zipName + '" - please attach it here before sending (email apps can\'t attach it automatically).\n\n' + summary
+  );
+
+  document.getElementById('submitStatus').textContent = 'Downloaded. Opening your email app now...';
+  setTimeout(() => { location.href = 'mailto:' + RECIPIENT_EMAIL + '?subject=' + subject + '&body=' + body; }, 500);
+  setTimeout(() => wipeTo('done', renderDone), 900);
+}
+
+function renderDone(){
+  app.innerHTML = `
+    <div class="card stage active" style="align-items:center; text-align:center;">
+      <h1>Saved.</h1>
+      <p>Your zip downloaded and your email app should be opening now, addressed to ${RECIPIENT_EMAIL}.</p>
+      <p class="muted">Remember to attach the zip file before hitting send. If your email app didn't open, you can email it manually - the zip has everything.</p>
+    </div>`;
+}
+
+/* boot */
+setEra('8bit');
+renderIntro();
+</script>
+</body>
+</html>
